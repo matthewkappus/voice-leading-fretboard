@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unified Voice Leading Tool</title>
+    <style>
+        /* --- Layout & Typography --- */
+        body { margin: 0; padding: 0; font-family: system-ui, sans-serif; background: #f8f9fa; color: #202124; height: 100vh; display: flex; user-select: none; }
+        .app-container { display: flex; width: 100%; height: 100%; }
+
+        /* --- Sidebar UI --- */
+        .sidebar { width: 360px; background: #ffffff; border-right: 1px solid #dadce0; padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; overflow-y: auto; box-shadow: 2px 0 10px rgba(0,0,0,0.05); z-index: 10; }
+        .sidebar h2 { margin: top: 0; margin-bottom: 0.5rem; font-size: 1.25rem; color: #1a73e8; border-bottom: 2px solid #e8eaed; padding-bottom: 0.5rem; }
+
+        .chord-module { background: #f8f9fa; border: 2px solid #e8eaed; border-radius: 8px; padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem; transition: all 0.2s; }
+        .chord-module.active { border-color: #1a73e8; background: #e8f0fe; box-shadow: 0 4px 12px rgba(26, 115, 232, 0.15); }
+        
+        .chord-btn { font-size: 1.1rem; font-weight: bold; background: none; border: none; padding: 0; cursor: pointer; color: #3c4043; text-align: left; display: flex; justify-content: space-between; width: 100%; }
+        .chord-module.active .chord-btn { color: #1a73e8; }
+
+        /* --- Dropdowns --- */
+        .dropdown-group { display: flex; gap: 0.5rem; }
+        select { flex: 1; padding: 0.4rem; font-size: 0.85rem; border-radius: 4px; border: 1px solid #dadce0; background: white; cursor: pointer; outline: none; }
+        select:focus { border-color: #1a73e8; }
+
+        /* --- D-Pad Controls --- */
+        .d-pad { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; width: 100px; margin: 0 auto; }
+        .d-pad button { padding: 6px; border: 1px solid #dadce0; background: white; border-radius: 4px; cursor: pointer; font-size: 12px; transition: 0.1s; display: flex; align-items: center; justify-content: center; }
+        .d-pad button:hover:not(:disabled) { background: #1a73e8; color: white; border-color: #1a73e8; }
+        .d-pad button:disabled { opacity: 0.3; cursor: not-allowed; }
+        .d-pad .up { grid-column: 2; }
+        .d-pad .left { grid-column: 1; }
+        .d-pad .right { grid-column: 3; }
+        .d-pad .down { grid-column: 2; grid-row: 3; }
+
+        .controls-row { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+
+        /* --- Main Content Area --- */
+        .main-content { flex: 1; display: flex; align-items: center; justify-content: center; padding: 2rem; overflow: hidden; position: relative; }
+        svg { background: #ffffff; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); width: 100%; max-width: 1100px; height: auto; }
+
+        /* --- SVG Elements --- */
+        .string { stroke: #dadce0; stroke-width: 2; }
+        .string-thick { stroke: #dadce0; stroke-width: 4; }
+        .fret { stroke: #bdc1c6; stroke-width: 3; }
+        .fret-marker { fill: #f1f3f4; }
+        .nut { stroke: #5f6368; stroke-width: 8; }
+        
+        .chord-group { cursor: grab; }
+        .chord-group:active { cursor: grabbing; }
+        
+        .note { transition: transform 0.1s ease-out; }
+        .note-circle { fill: #1a73e8; stroke: #fff; stroke-width: 3; }
+        .note-text { fill: white; font-size: 14px; font-weight: bold; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+        
+        .leading-tone .note-circle { fill: #d93025; }
+        .resolved-tone .note-circle { fill: #188038; }
+        
+        .voice-path { fill: none; stroke: #1a73e8; stroke-width: 3; stroke-dasharray: 8; opacity: 0.6; animation: dash 20s linear infinite; }
+        .voice-path.leading-path { stroke: #d93025; stroke-width: 4; opacity: 0.8; }
+
+        @keyframes dash { to { stroke-dashoffset: -1000; } }
+        .chord-label { font-size: 24px; font-weight: bold; fill: #202124; }
+        .helper-text { font-size: 14px; fill: #5f6368; }
+    </style>
+</head>
+<body>
+
+    <div class="app-container">
+        <aside class="sidebar">
+            <h2>Progression</h2>
+            
+            <div class="chord-module active" id="module-dm">
+                <button class="chord-btn" onclick="AppController.selectChord('dm')">1. Dm (ii) <span id="arrow-dm">→</span></button>
+                <div class="dropdown-group">
+                    <select id="set-dm" onchange="AppController.setAbsolute('dm')">
+                        <option value="0">Strings 1-2-3</option>
+                        <option value="1">Strings 2-3-4</option>
+                        <option value="2">Strings 3-4-5</option>
+                        <option value="3">Strings 4-5-6</option>
+                    </select>
+                    <select id="inv-dm" onchange="AppController.setAbsolute('dm')">
+                        <option value="0">Pos 1</option>
+                        <option value="1">Pos 2</option>
+                        <option value="2">Pos 3</option>
+                    </select>
+                </div>
+                <div class="controls-row">
+                    <div class="helper-text" style="font-size: 11px;">Use D-Pad or Drag SVG</div>
+                    <div class="d-pad">
+                        <button class="up" id="up-dm" onclick="AppController.moveRelative('dm', -1, 0)">▲</button>
+                        <button class="left" id="left-dm" onclick="AppController.moveRelative('dm', 0, -1)">◀</button>
+                        <button class="right" id="right-dm" onclick="AppController.moveRelative('dm', 0, 1)">▶</button>
+                        <button class="down" id="down-dm" onclick="AppController.moveRelative('dm', 1, 0)">▼</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chord-module" id="module-g">
+                <button class="chord-btn" onclick="AppController.selectChord('g')">2. G Major (V) <span id="arrow-g" style="display:none;">→</span></button>
+                <div class="dropdown-group">
+                    <select id="set-g" onchange="AppController.setAbsolute('g')">
+                        <option value="0">Strings 1-2-3</option>
+                        <option value="1">Strings 2-3-4</option>
+                        <option value="2">Strings 3-4-5</option>
+                        <option value="3">Strings 4-5-6</option>
+                    </select>
+                    <select id="inv-g" onchange="AppController.setAbsolute('g')">
+                        <option value="0">Pos 1</option>
+                        <option value="1">Pos 2</option>
+                        <option value="2">Pos 3</option>
+                    </select>
+                </div>
+                <div class="controls-row">
+                    <div class="helper-text" style="font-size: 11px;">Use D-Pad or Drag SVG</div>
+                    <div class="d-pad">
+                        <button class="up" id="up-g" onclick="AppController.moveRelative('g', -1, 0)">▲</button>
+                        <button class="left" id="left-g" onclick="AppController.moveRelative('g', 0, -1)">◀</button>
+                        <button class="right" id="right-g" onclick="AppController.moveRelative('g', 0, 1)">▶</button>
+                        <button class="down" id="down-g" onclick="AppController.moveRelative('g', 1, 0)">▼</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chord-module" id="module-c">
+                <button class="chord-btn" onclick="AppController.selectChord('c')">3. C Major (I) <span id="arrow-c" style="display:none;">→</span></button>
+                <div class="dropdown-group">
+                    <select id="set-c" onchange="AppController.setAbsolute('c')">
+                        <option value="0">Strings 1-2-3</option>
+                        <option value="1">Strings 2-3-4</option>
+                        <option value="2">Strings 3-4-5</option>
+                        <option value="3">Strings 4-5-6</option>
+                    </select>
+                    <select id="inv-c" onchange="AppController.setAbsolute('c')">
+                        <option value="0">Pos 1</option>
+                        <option value="1">Pos 2</option>
+                        <option value="2">Pos 3</option>
+                    </select>
+                </div>
+                <div class="controls-row">
+                    <div class="helper-text" style="font-size: 11px;">Use D-Pad or Drag SVG</div>
+                    <div class="d-pad">
+                        <button class="up" id="up-c" onclick="AppController.moveRelative('c', -1, 0)">▲</button>
+                        <button class="left" id="left-c" onclick="AppController.moveRelative('c', 0, -1)">◀</button>
+                        <button class="right" id="right-c" onclick="AppController.moveRelative('c', 0, 1)">▶</button>
+                        <button class="down" id="down-c" onclick="AppController.moveRelative('c', 1, 0)">▼</button>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <svg viewBox="0 0 1100 320" id="fretboard"></svg>
+        </main>
+    </div>
+
+    <script>
+        // ==========================================
+        // MODULE 3: Data & Matrix Logic
+        // ==========================================
+        const Config = {
+            strings: 6, frets: 14, startX: 50, startY: 40, stringSpacing: 40, fretSpacing: 70
+        };
+
+        const ChordLibrary = {
+            'dm': {
+                name: "D minor (ii)",
+                matrix: [
+                    [ [{s:1, f:1, n:"F", id:"v1"}, {s:2, f:3, n:"D", id:"v2"}, {s:3, f:2, n:"A", id:"v3"}],
+                      [{s:1, f:5, n:"A", id:"v1"}, {s:2, f:6, n:"F", id:"v2"}, {s:3, f:7, n:"D", id:"v3"}],
+                      [{s:1, f:10, n:"D", id:"v1"}, {s:2, f:10, n:"A", id:"v2"}, {s:3, f:10, n:"F", id:"v3"}] ],
+                    [ [{s:2, f:3, n:"D", id:"v1"}, {s:3, f:2, n:"A", id:"v2"}, {s:4, f:3, n:"F", id:"v3"}],
+                      [{s:2, f:6, n:"F", id:"v1"}, {s:3, f:7, n:"D", id:"v2"}, {s:4, f:7, n:"A", id:"v3"}],
+                      [{s:2, f:10, n:"A", id:"v1"}, {s:3, f:10, n:"F", id:"v2"}, {s:4, f:12, n:"D", id:"v3"}] ],
+                    [ [{s:3, f:2, n:"A", id:"v1"}, {s:4, f:3, n:"F", id:"v2"}, {s:5, f:5, n:"D", id:"v3"}],
+                      [{s:3, f:7, n:"D", id:"v1"}, {s:4, f:7, n:"A", id:"v2"}, {s:5, f:8, n:"F", id:"v3"}],
+                      [{s:3, f:10, n:"F", id:"v1"}, {s:4, f:12, n:"D", id:"v2"}, {s:5, f:12, n:"A", id:"v3"}] ],
+                    [ [{s:4, f:3, n:"F", id:"v1"}, {s:5, f:5, n:"D", id:"v2"}, {s:6, f:5, n:"A", id:"v3"}],
+                      [{s:4, f:7, n:"A", id:"v1"}, {s:5, f:8, n:"F", id:"v2"}, {s:6, f:10, n:"D", id:"v3"}],
+                      [{s:4, f:12, n:"D", id:"v1"}, {s:5, f:12, n:"A", id:"v2"}, {s:6, f:13, n:"F", id:"v3"}] ]
+                ]
+            },
+            'g': {
+                name: "G Major (V)",
+                matrix: [
+                    [ [{s:1, f:3, n:"G", id:"v1"}, {s:2, f:3, n:"D", id:"v2"}, {s:3, f:4, n:"B", id:"v3", lead:true}],
+                      [{s:1, f:7, n:"B", id:"v1", lead:true}, {s:2, f:8, n:"G", id:"v2"}, {s:3, f:7, n:"D", id:"v3"}],
+                      [{s:1, f:10, n:"D", id:"v1"}, {s:2, f:12, n:"B", id:"v2", lead:true}, {s:3, f:12, n:"G", id:"v3"}] ],
+                    [ [{s:2, f:3, n:"D", id:"v1"}, {s:3, f:4, n:"B", id:"v2", lead:true}, {s:4, f:5, n:"G", id:"v3"}],
+                      [{s:2, f:8, n:"G", id:"v1"}, {s:3, f:7, n:"D", id:"v2"}, {s:4, f:9, n:"B", id:"v3", lead:true}],
+                      [{s:2, f:12, n:"B", id:"v1", lead:true}, {s:3, f:12, n:"G", id:"v2"}, {s:4, f:12, n:"D", id:"v3"}] ],
+                    [ [{s:3, f:4, n:"B", id:"v1", lead:true}, {s:4, f:5, n:"G", id:"v2"}, {s:5, f:5, n:"D", id:"v3"}],
+                      [{s:3, f:7, n:"D", id:"v1"}, {s:4, f:9, n:"B", id:"v2", lead:true}, {s:5, f:10, n:"G", id:"v3"}],
+                      [{s:3, f:12, n:"G", id:"v1"}, {s:4, f:12, n:"D", id:"v2"}, {s:5, f:14, n:"B", id:"v3", lead:true}] ],
+                    [ [{s:4, f:5, n:"G", id:"v1"}, {s:5, f:5, n:"D", id:"v2"}, {s:6, f:7, n:"B", id:"v3", lead:true}],
+                      [{s:4, f:9, n:"B", id:"v1", lead:true}, {s:5, f:10, n:"G", id:"v2"}, {s:6, f:10, n:"D", id:"v3"}],
+                      [{s:4, f:12, n:"D", id:"v1"}, {s:5, f:14, n:"B", id:"v2", lead:true}, {s:6, f:15, n:"G", id:"v3"}] ]
+                ]
+            },
+            'c': {
+                name: "C Major (I)",
+                matrix: [
+                    [ [{s:1, f:3, n:"G", id:"v1"}, {s:2, f:5, n:"E", id:"v2"}, {s:3, f:5, n:"C", id:"v3", res:true}],
+                      [{s:1, f:8, n:"C", id:"v1", res:true}, {s:2, f:8, n:"G", id:"v2"}, {s:3, f:9, n:"E", id:"v3"}],
+                      [{s:1, f:12, n:"E", id:"v1"}, {s:2, f:13, n:"C", id:"v2", res:true}, {s:3, f:12, n:"G", id:"v3"}] ],
+                    [ [{s:2, f:1, n:"C", id:"v1", res:true}, {s:3, f:0, n:"G", id:"v2"}, {s:4, f:2, n:"E", id:"v3"}],
+                      [{s:2, f:5, n:"E", id:"v1"}, {s:3, f:5, n:"C", id:"v2", res:true}, {s:4, f:5, n:"G", id:"v3"}],
+                      [{s:2, f:8, n:"G", id:"v1"}, {s:3, f:9, n:"E", id:"v2"}, {s:4, f:10, n:"C", id:"v3", res:true}] ],
+                    [ [{s:3, f:5, n:"C", id:"v1", res:true}, {s:4, f:5, n:"G", id:"v2"}, {s:5, f:7, n:"E", id:"v3"}],
+                      [{s:3, f:9, n:"E", id:"v1"}, {s:4, f:10, n:"C", id:"v2", res:true}, {s:5, f:10, n:"G", id:"v3"}],
+                      [{s:3, f:12, n:"G", id:"v1"}, {s:4, f:14, n:"E", id:"v2"}, {s:5, f:15, n:"C", id:"v3", res:true}] ],
+                    [ [{s:4, f:2, n:"E", id:"v1"}, {s:5, f:3, n:"C", id:"v2", res:true}, {s:6, f:3, n:"G", id:"v3"}],
+                      [{s:4, f:5, n:"G", id:"v1"}, {s:5, f:7, n:"E", id:"v2"}, {s:6, f:8, n:"C", id:"v3", res:true}],
+                      [{s:4, f:10, n:"C", id:"v1", res:true}, {s:5, f:10, n:"G", id:"v2"}, {s:6, f:12, n:"E", id:"v3"}] ]
+                ]
+            }
+        };
+
+        // ==========================================
+        // MODULE 4: State Controller
+        // ==========================================
+        const AppState = {
+            order: ['dm', 'g', 'c'],
+            currentChordId: 'dm',
+            previousChordId: null,
+            chords: {
+                'dm': { set: 1, inv: 0 },
+                'g':  { set: 1, inv: 0 },
+                'c':  { set: 1, inv: 1 } 
+            },
+            getNotes(chordId) {
+                const state = this.chords[chordId];
+                return ChordLibrary[chordId].matrix[state.set][state.inv];
+            }
+        };
+
+        const AppController = {
+            init() {
+                this.syncUI();
+                Renderer.renderAll();
+            },
+
+            selectChord(chordId) {
+                if (chordId !== AppState.currentChordId) {
+                    AppState.previousChordId = AppState.currentChordId;
+                    AppState.currentChordId = chordId;
+                }
+                this.syncUI();
+                Renderer.renderAll();
+            },
+
+            // Triggered by Dropdowns
+            setAbsolute(chordId) {
+                const newSet = parseInt(document.getElementById(`set-${chordId}`).value);
+                const newInv = parseInt(document.getElementById(`inv-${chordId}`).value);
+                
+                AppState.chords[chordId].set = newSet;
+                AppState.chords[chordId].inv = newInv;
+                
+                this.syncUI();
+                if (chordId === AppState.currentChordId) Renderer.renderAll();
+            },
+
+            // Triggered by D-Pad or Dragging
+            moveRelative(chordId, dSet, dInv) {
+                let state = AppState.chords[chordId];
+                state.set = Math.max(0, Math.min(3, state.set + dSet));
+                state.inv = Math.max(0, Math.min(2, state.inv + dInv));
+                
+                this.syncUI();
+                if (chordId === AppState.currentChordId) Renderer.renderAll();
+            },
+
+            // Master sync to ensure Sidebar matches State perfectly
+            syncUI() {
+                AppState.order.forEach(chordId => {
+                    const isActive = chordId === AppState.currentChordId;
+                    const state = AppState.chords[chordId];
+
+                    // Update Active Card Styles
+                    document.getElementById(`module-${chordId}`).className = `chord-module ${isActive ? 'active' : ''}`;
+                    document.getElementById(`arrow-${chordId}`).style.display = isActive ? 'inline' : 'none';
+
+                    // Update Dropdowns
+                    document.getElementById(`set-${chordId}`).value = state.set;
+                    document.getElementById(`inv-${chordId}`).value = state.inv;
+
+                    // Update D-Pad disabled states
+                    document.getElementById(`up-${chordId}`).disabled = state.set <= 0;
+                    document.getElementById(`down-${chordId}`).disabled = state.set >= 3;
+                    document.getElementById(`left-${chordId}`).disabled = state.inv <= 0;
+                    document.getElementById(`right-${chordId}`).disabled = state.inv >= 2;
+                });
+            }
+        };
+
+        // ==========================================
+        // MODULE 5: SVG Renderer & Drag Engine
+        // ==========================================
+        const Renderer = {
+            svg: document.getElementById('fretboard'),
+            isDragging: false, startX: 0, startY: 0, currentX: 0, currentY: 0,
+
+            getCoords(string, fret) {
+                return { x: fret === 0 ? Config.startX : Config.startX + (fret - 0.5) * Config.fretSpacing, y: Config.startY + (string - 1) * Config.stringSpacing };
+            },
+
+            drawGrid() {
+                this.svg.innerHTML = '';
+                [3, 5, 7, 9, 12].forEach(fret => {
+                    const cx = Config.startX + (fret - 0.5) * Config.fretSpacing;
+                    const cy = Config.startY + 2.5 * Config.stringSpacing;
+                    this.svg.innerHTML += `<circle cx="${cx}" cy="${cy}" r="12" class="fret-marker" />`;
+                    if(fret === 12) {
+                        this.svg.innerHTML += `<circle cx="${cx}" cy="${cy - Config.stringSpacing}" r="12" class="fret-marker" />`;
+                        this.svg.innerHTML += `<circle cx="${cx}" cy="${cy + Config.stringSpacing}" r="12" class="fret-marker" />`;
+                    }
+                });
+                for (let i = 0; i <= Config.frets; i++) {
+                    const x = Config.startX + i * Config.fretSpacing;
+                    const className = i === 0 ? 'nut' : 'fret';
+                    this.svg.innerHTML += `<line x1="${x}" y1="${Config.startY}" x2="${x}" y2="${Config.startY + 5 * Config.stringSpacing}" class="${className}" />`;
+                }
+                for (let i = 0; i < Config.strings; i++) {
+                    const y = Config.startY + i * Config.stringSpacing;
+                    const className = i > 2 ? 'string-thick' : 'string';
+                    this.svg.innerHTML += `<line x1="${Config.startX}" y1="${y}" x2="${Config.startX + Config.frets * Config.fretSpacing}" y2="${y}" class="${className}" />`;
+                }
+                this.svg.innerHTML += `<text x="50" y="290" class="chord-label" id="chord-name"></text>`;
+            },
+
+            drawPaths(prevNotes, currNotes) {
+                if (!prevNotes || !currNotes) return;
+                currNotes.forEach(note => {
+                    const prevNote = prevNotes.find(n => n.id === note.id);
+                    if (prevNote) {
+                        const start = this.getCoords(prevNote.s, prevNote.f);
+                        const end = this.getCoords(note.s, note.f);
+                        if (start.x !== end.x || start.y !== end.y) {
+                            const distY = Math.abs(end.y - start.y);
+                            const curveOffset = distY > 50 ? 60 : 30; 
+                            const pathClass = prevNote.lead ? 'voice-path leading-path' : 'voice-path';
+                            const pathData = `M ${start.x} ${start.y} Q ${(start.x + end.x)/2} ${(start.y + end.y)/2 - curveOffset} ${end.x} ${end.y}`;
+                            this.svg.innerHTML += `<path d="${pathData}" class="${pathClass}" />`;
+                        }
+                    }
+                });
+            },
+
+            drawNotes(notes) {
+                let group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+                group.setAttribute("class", "chord-group");
+                group.setAttribute("id", "draggable-chord");
+
+                notes.forEach(note => {
+                    const coords = this.getCoords(note.s, note.f);
+                    let stateClass = note.lead ? 'leading-tone' : (note.res ? 'resolved-tone' : '');
+                    let noteG = document.createElementNS("http://www.w3.org/2000/svg", "g");
+                    noteG.setAttribute("class", `note ${stateClass}`);
+                    noteG.setAttribute("transform", `translate(${coords.x}, ${coords.y})`);
+                    noteG.innerHTML = `<circle r="16" class="note-circle" /><text class="note-text">${note.n}</text>`;
+                    group.appendChild(noteG);
+                });
+
+                group.addEventListener('mousedown', this.startDrag.bind(this));
+                this.svg.appendChild(group);
+            },
+
+            startDrag(e) {
+                this.isDragging = true;
+                this.startX = e.clientX; this.startY = e.clientY;
+                document.addEventListener('mousemove', this.drag.bind(this));
+                document.addEventListener('mouseup', this.endDrag.bind(this));
+            },
+
+            drag(e) {
+                if (!this.isDragging) return;
+                this.currentX = e.clientX - this.startX;
+                this.currentY = e.clientY - this.startY;
+                document.getElementById('draggable-chord')?.setAttribute("transform", `translate(${this.currentX}, ${this.currentY})`);
+            },
+
+            endDrag(e) {
+                if (!this.isDragging) return;
+                this.isDragging = false;
+                document.removeEventListener('mousemove', this.drag.bind(this));
+                document.removeEventListener('mouseup', this.endDrag.bind(this));
+
+                const stringMove = Math.round(this.currentY / Config.stringSpacing);
+                const fretMove = Math.round(this.currentX / Config.fretSpacing);
+
+                let dSet = stringMove > 0 ? 1 : (stringMove < 0 ? -1 : 0);
+                let dInv = fretMove > 0 ? 1 : (fretMove < 0 ? -1 : 0);
+
+                if (dSet !== 0 || dInv !== 0) {
+                    AppController.moveRelative(AppState.currentChordId, dSet, dInv);
+                } else {
+                    this.renderAll(); // Snap back
+                }
+            },
+
+            renderAll() {
+                this.drawGrid();
+                const currentNotes = AppState.getNotes(AppState.currentChordId);
+                const previousNotes = AppState.previousChordId ? AppState.getNotes(AppState.previousChordId) : null;
+
+                if (AppState.previousChordId && AppState.previousChordId !== AppState.currentChordId) {
+                    this.drawPaths(previousNotes, currentNotes);
+                }
+                this.drawNotes(currentNotes);
+
+                const chordData = ChordLibrary[AppState.currentChordId];
+                const state = AppState.chords[AppState.currentChordId];
+                document.getElementById('chord-name').textContent = `${chordData.name} - Set ${state.set + 1}, Pos ${state.inv + 1}`;
+            }
+        };
+
+        // Boot Application
+        AppController.init();
+    </script>
+</body>
+</html>
